@@ -1,0 +1,90 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marine-insurance",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "94bc2405-eff2-4214-97c4-f61cbdc1a703",
+      "name": "Webhook",
+      "webhookId": "599c7c30-af8e-4acb-a544-6314d479075c"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8000/analyze",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email_content\": \"{{ $json.email_content }}\",\n  \"client_id\": \"{{ $json.client_id }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "b9dd22aa-b9f9-4541-b271-0845c4a0b1c0",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.first().json;\nreturn [{\n  json: {\n    status: report.status,\n    agents: report.selected_agents,\n    rapport: report.final_report,\n    duration: report.duration_sec\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "1c15d995-41bf-416d-bd0e-a3b1db67134f",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6657732c-a215-44ef-8d40-9dc498e893b3",
+  "meta": {
+    "instanceId": "7020129195c90ead832d297318200b4060920eabd4728d18dba830b7287cab36"
+  },
+  "nodeGroups": [],
+  "id": "y1mJlkDWi5UVYkPq",
+  "tags": []
+}
