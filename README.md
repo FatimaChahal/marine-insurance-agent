@@ -251,5 +251,4 @@ python3 -m pytest tests/ -v
 - 🎓 Doctorat Systèmes Distribués (UTT)
 - 🔬 Postdoc IA générative (UPPA — Projet EU AI4MultiGIS)
 - 🔗 [GitHub](https://github.com/FatimaChahal)
-- 📚 [Google Scholar](https://scholar.google.com/citations?user=I106NZcAAAAJ&hl=fr)
-READMEEOF
+- 📚 [Google Scholar](https://scholar.google.com/citations?user=I106NZcAAAAJ&hl=fr)# CI/CD test
