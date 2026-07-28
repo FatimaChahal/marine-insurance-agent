@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from api import app
 
+API_KEY = os.getenv("API_KEY", "marine-insurance-secret-key-2026")
 client = TestClient(app)
 
 def test_health():
@@ -28,14 +29,12 @@ def test_agents_endpoint():
     assert len(data["agents"]) > 0
 
 def test_analyze_missing_body():
-    # Sans API Key → 401
     response = client.post("/analyze", json={})
     assert response.status_code == 401
 
 def test_analyze_with_key_missing_body():
-    # Avec API Key mais body vide → 422
-    response = client.post("/analyze", 
+    response = client.post("/analyze",
         json={},
-        headers={"X-API-Key": "marine-insurance-secret-key-2026"}
+        headers={"X-API-Key": API_KEY}
     )
     assert response.status_code == 422
