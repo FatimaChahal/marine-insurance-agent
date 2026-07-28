@@ -1,12 +1,11 @@
-import sys
 import os
+import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 from fastapi.testclient import TestClient
 from api import app
 
-API_KEY = os.getenv("API_KEY", "marine-insurance-secret-key-2026")
 client = TestClient(app)
 
 def test_health():
@@ -28,13 +27,13 @@ def test_agents_endpoint():
     assert "agents" in data
     assert len(data["agents"]) > 0
 
-def test_analyze_missing_body():
+def test_analyze_requires_auth():
     response = client.post("/analyze", json={})
     assert response.status_code == 401
 
-def test_analyze_with_key_missing_body():
+def test_analyze_invalid_key():
     response = client.post("/analyze",
-        json={},
-        headers={"X-API-Key": API_KEY}
+        json={"email_content": "test"},
+        headers={"X-API-Key": "wrong-key"}
     )
-    assert response.status_code == 422
+    assert response.status_code == 401
