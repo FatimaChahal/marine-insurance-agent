@@ -68,6 +68,9 @@ Langfuse (monitoring LLM) + MLflow (tracking expériences)
 
 ## 📸 Screenshots
 
+### Architecture complète
+![Architecture](screenshots/architecture.png)
+
 ### Pipeline en action
 ![Terminal Run](screenshots/Terminal_run.png)
 
