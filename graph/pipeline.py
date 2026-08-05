@@ -362,24 +362,32 @@ def run_with_monitoring(email_content: str) -> dict:
 
 if __name__ == "__main__":
     pipeline = build_pipeline()
-
-    initial_state = InsuranceState(
-            raw_email=request.email_content,
-            client_id=request.client_id,
-            client_needs=None,
-            client_anonymized=None,
-            selected_agents=None,
-            rag_scores=None,
-            emails_sent=None,
-            offers_collected=None,
-            final_report=None,
-            silver_id=None,
-            metadata=[],
-            errors=[],
-            start_time=datetime.now().isoformat(),
-            status="running"
-        )
-
+    
+    test_email = """
+    Bonjour,
+    Je souhaite assurer mon voilier de 12 mètres (valeur 80 000€) 
+    pour une traversée Méditerranée-Atlantique prévue en septembre.
+    J'ai besoin d'une couverture tous risques incluant assistance 24h/24.
+    Pouvez-vous me faire des propositions rapidement ?
+    Merci, Jean Dupont
+    """
+    
+    initial_state = {
+        "raw_email": test_email,
+        "client_id": "test_client",
+        "client_needs": None,
+        "client_anonymized": None,
+        "selected_agents": None,
+        "rag_scores": None,
+        "emails_sent": None,
+        "offers_collected": None,
+        "final_report": None,
+        "silver_id": None,
+        "metadata": [],
+        "errors": [],
+        "start_time": datetime.now().isoformat(),
+        "status": "running"
+    }
     result = pipeline.invoke(initial_state)
 
     print("\n" + "="*55)
