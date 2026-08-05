@@ -1,6 +1,21 @@
 # Base de connaissance des agents maritimes
 # En production : alimentée par de vrais documents PDF/contrats
 
+"""
+Base de connaissance des agents maritimes — VERSION MOCK (POC)
+
+En production, cette base serait alimentée par :
+- Import automatique de PDFs de contrats d'assurance
+- API externe des compagnies d'assurance
+- Base de données relationnelle (PostgreSQL)
+- Mise à jour périodique via pipeline ETL
+
+Pour alimenter la base vectorielle en production :
+    from rag.vectorstore import get_vectorstore
+    collection = get_vectorstore()
+    collection.add(ids=[...], documents=[...], metadatas=[...])
+"""
+
 MARITIME_AGENTS_DOCS = [
     {
         "id": "axa_marine",

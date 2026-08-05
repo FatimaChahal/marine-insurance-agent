@@ -11,6 +11,9 @@ from graph.state import InsuranceState
 from fastapi import FastAPI, HTTPException, Security, Depends
 from fastapi.security import APIKeyHeader
 
+from monitoring.mlflow_config import log_pipeline_run
+from monitoring.langfuse_config import trace_agent
+
 API_KEY = os.getenv("API_KEY", "marine-insurance-secret-key")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -83,6 +86,14 @@ def analyze_email(request: EmailRequest):
 
         result = pipeline.invoke(initial_state)
         duration = round((datetime.now() - start).total_seconds(), 2)
+
+        # Log MLflow automatique
+        log_pipeline_run(
+            metadata=result["metadata"],
+            rag_scores=result["rag_scores"],
+            duration=duration,
+            status=result["status"]
+        )
 
         return PipelineResponse(
             status=result["status"],
