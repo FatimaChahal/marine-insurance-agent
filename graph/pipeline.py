@@ -15,6 +15,10 @@ from utils.logger import log_agent
 from monitoring.mlflow_config import log_pipeline_run
 from monitoring.langfuse_config import trace_agent
 from utils.azure_client import call_phi, parse_json_response
+from medallion.pipeline import init_db, save_bronze, save_silver, save_gold
+
+# Init Medallion DB au démarrage
+init_db()
 
 # ─── NODE 1 : Guardrails + Compréhension ────────────────────────────────────
 def node_understand(state: InsuranceState) -> InsuranceState:
@@ -56,10 +60,24 @@ def node_understand(state: InsuranceState) -> InsuranceState:
         response_time=result["response_time"]
     )
 
+    # Medallion — Bronze + Silver
+    bronze_id = save_bronze(
+        client_id=state.get("client_id", "anonymous"),
+        raw_email=state["raw_email"]
+    )
+    silver_id = save_silver(
+        bronze_id=bronze_id,
+        client_id=state.get("client_id", "anonymous"),
+        anonymized_email=anonymized_email,
+        needs=needs,
+        pii_count=len(pii_map)
+    )
+
     return {
         **state,
         "client_needs": needs,
         "client_anonymized": {"email": anonymized_email, "pii_map": pii_map},
+        "silver_id": silver_id,
         "metadata": [{"agent": "Agent1", "tokens": result["tokens_used"], "time": result["response_time"]}]
     }
 
@@ -201,6 +219,20 @@ def node_report(state: InsuranceState) -> InsuranceState:
         response_time=result["response_time"]
     )
 
+    # Medallion — Gold
+    save_gold(
+        silver_id=state.get("silver_id", 1),
+        client_id=state.get("client_id", "anonymous"),
+        result={
+            "selected_agents": [a["nom"] for a in state["selected_agents"]],
+            "offers_count": len(state["offers_collected"]),
+            "final_report": result["content"],
+            "rag_scores": state["rag_scores"],
+            "metadata": state["metadata"],
+            "duration_sec": 0
+        }
+    )
+
     return {
         **state,
         "final_report": result["content"],
@@ -331,27 +363,22 @@ def run_with_monitoring(email_content: str) -> dict:
 if __name__ == "__main__":
     pipeline = build_pipeline()
 
-    initial_state = {
-        "raw_email": """
-        Bonjour,
-        Je souhaite assurer mon voilier de 12 mètres (valeur 80 000€)
-        pour une traversée Méditerranée-Atlantique prévue en septembre.
-        J'ai besoin d'une couverture tous risques incluant assistance 24h/24.
-        Pouvez-vous me faire des propositions rapidement ?
-        Merci, Jean Dupont
-        """,
-        "client_needs": None,
-        "client_anonymized": None,
-        "selected_agents": None,
-        "rag_scores": None,
-        "emails_sent": None,
-        "offers_collected": None,
-        "final_report": None,
-        "metadata": [],
-        "errors": [],
-        "start_time": datetime.now().isoformat(),
-        "status": "running"
-    }
+    initial_state = InsuranceState(
+            raw_email=request.email_content,
+            client_id=request.client_id,
+            client_needs=None,
+            client_anonymized=None,
+            selected_agents=None,
+            rag_scores=None,
+            emails_sent=None,
+            offers_collected=None,
+            final_report=None,
+            silver_id=None,
+            metadata=[],
+            errors=[],
+            start_time=datetime.now().isoformat(),
+            status="running"
+        )
 
     result = pipeline.invoke(initial_state)
 
