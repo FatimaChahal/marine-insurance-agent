@@ -107,6 +107,19 @@ def node_select(state: InsuranceState) -> InsuranceState:
     for a in relevant_agents:
         print(f"   → {a['nom']} (score: {a['score']})")
 
+    # DeepEval — évaluation qualité RAG
+    # DeepEval — évaluation qualité RAG
+    try:
+        from rag.deepeval_evaluation import evaluate_rag_deepeval
+        query = f"{needs['type_bateau']} {needs['valeur_estimee']}€ {needs['zone_navigation']}"
+        answer = f"Agents sélectionnés : {', '.join([a['nom'] for a in relevant_agents])}"
+        contexts = [a["description"] for a in relevant_agents]
+        deepeval_scores = evaluate_rag_deepeval(query, answer, contexts)
+        print(f"📊 DeepEval scores : {deepeval_scores}")
+    except Exception as e:
+        deepeval_scores = {}
+        print(f"⚠️ DeepEval skipped : {e}")
+
     return {
         **state,
         "selected_agents": relevant_agents,
