@@ -51,6 +51,7 @@ Langfuse (monitoring LLM) + MLflow (tracking expériences)
 | Containerisation | Docker + docker-compose |
 | CI/CD | GitHub Actions |
 | Tests | pytest (15 tests) |
+| A2A Protocol | Google A2A Standard (agent discovery + inter-agent HTTP) |
 
 ---
 

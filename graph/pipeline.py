@@ -88,26 +88,26 @@ def node_select(state: InsuranceState) -> InsuranceState:
     needs = state["client_needs"]
     query = f"{needs['type_bateau']} {needs['valeur_estimee']}€ {needs['zone_navigation']} {needs['besoins_specifiques']}"
 
-    # RAG ChromaDB
-    rag_results = search_agents(query, n_results=3)
+    # RAG — tous les agents avec score > seuil
+    all_results = search_agents(query, n_results=8)
+    
+    # Filtre : garde seulement les agents avec score > 0.4
+    SCORE_THRESHOLD = 0.4
+    relevant_agents = [a for a in all_results if a["score"] > SCORE_THRESHOLD]
+    
+    # Minimum 2 agents
+    if len(relevant_agents) < 2:
+        relevant_agents = all_results[:2]
 
-    print(f"✅ Agent 2 — {len(rag_results)} agents trouvés via RAG")
-    for r in rag_results:
-        print(f"   → {r['nom']} (score RAG: {r['score']})")
-
-    trace_agent(
-        agent_name="Agent2_RAG_Selection",
-        input_data=query,
-        output_data=str(rag_results)[:200],
-        tokens=0,
-        response_time=0
-    )
+    print(f"✅ Agent 2 — {len(relevant_agents)}/{len(all_results)} agents pertinents (seuil RAG: {SCORE_THRESHOLD})")
+    for a in relevant_agents:
+        print(f"   → {a['nom']} (score: {a['score']})")
 
     return {
         **state,
-        "selected_agents": rag_results,
-        "rag_scores": {"agents_scores": [{"nom": r["nom"], "score": r["score"]} for r in rag_results]},
-        "metadata": [{"agent": "Agent2_RAG", "rag_results": len(rag_results)}]
+        "selected_agents": relevant_agents,
+        "rag_scores": {"agents_scores": [{"nom": a["nom"], "score": a["score"]} for a in relevant_agents]},
+        "metadata": state["metadata"] + [{"agent": "Agent2_RAG", "rag_results": len(relevant_agents), "total_candidates": len(all_results)}]
     }
 
 # ─── NODE 3 : Envoi mails ────────────────────────────────────────────────────
@@ -118,25 +118,34 @@ def node_send_emails(state: InsuranceState) -> InsuranceState:
     agents = state["selected_agents"]
     agents_list = ", ".join([a['nom'] for a in agents])
 
-    prompt = f"""
-    Rédige {len(agents)} mails professionnels courts pour demander des offres d'assurance maritime.
-    Client : {needs['type_bateau']} de {needs['valeur_estimee']}€,
-    zone {needs['zone_navigation']}, urgence {needs['urgence']}.
-    Agents : {agents_list}
-    
-    Réponds UNIQUEMENT avec ce JSON, sans texte avant ou après :
-    [{{"agent": "nom_agent", "mail": "contenu_mail"}}]
-    """
+    prompt = f"""Pour ces assureurs : {agents_list}
+    Client : {needs['type_bateau']} {needs['valeur_estimee']}€, {needs['zone_navigation']}, urgence {needs['urgence']}.
+    JSON UNIQUEMENT : [{{"agent":"nom","mail":"texte court du mail"}}]"""
 
-    result = call_phi(prompt, temperature=0.1, max_tokens=400)
+    result = call_phi(prompt, temperature=0.1, max_tokens=600)
     log_agent("Agent3_EmailSender", result, result["tokens_used"], result["response_time"])
 
     content = result["content"]
-    emails = parse_json_response(content, fallback=[
-        {"agent": a['nom'], "mail": f"Demande d'offre assurance pour voilier {needs['valeur_estimee']}€"}
-        for a in agents
-    ])
 
+    try:
+        content_clean = re.sub(r"```json|```", "", content).strip()
+        match = re.search(r'\[.*\]', content_clean, re.DOTALL)
+        if match:
+            emails_raw = json.loads(match.group())
+            # Normalise le format — mail peut être string ou dict
+            emails = []
+            for e in emails_raw:
+                mail_content = e.get("mail", "")
+                if isinstance(mail_content, dict):
+                    mail_content = mail_content.get("corps", str(mail_content))
+                emails.append({"agent": e["agent"], "mail": mail_content})
+        else:
+            raise ValueError("No JSON array found")
+    except Exception as ex:
+        print(f"⚠️ JSON parsing failed ({ex}) — fallback utilisé")
+        emails = [{"agent": a['nom'], "mail": f"Demande d'offre pour {needs['type_bateau']} {needs['valeur_estimee']}€"} for a in agents]
+
+    print(f"✅ Agent 3 — {len(emails)} mails envoyés")
     return {
         **state,
         "emails_sent": emails,
@@ -151,12 +160,16 @@ def node_collect_offers(state: InsuranceState) -> InsuranceState:
     agents = state["selected_agents"]
     agents_list = ", ".join([a['nom'] for a in agents])
 
-    prompt = f"""
-    Simule {len(agents)} offres d'assurance maritime de : {agents_list}
-    Pour : {needs['type_bateau']} de {needs['valeur_estimee']}€,
-    zone {needs['zone_navigation']}.
-    JSON : [{{"agent":"...","prime_annuelle":"...","franchise":"...","garanties":"...","note":8}}]
-    """
+    agents_info = ", ".join([f"{a['nom']}" for a in agents])
+    
+    prompt = f"""Tu es expert assurance maritime. Retourne UNIQUEMENT ce JSON sans aucun texte avant ou après :
+    [
+    {{"agent":"April Marine","prime_annuelle":"720€","franchise":"200€","garanties":"RC, dommages, vol","note":8}},
+    {{"agent":"MAIF Mer","prime_annuelle":"850€","franchise":"300€","garanties":"RC, tous risques","note":7}}
+    ]
+    Maintenant fais pareil pour ces assureurs avec des prix variés (600€ à 2500€) : {agents_info}
+    Voilier {needs['valeur_estimee']}€, zone {needs['zone_navigation']}.
+    RETOURNE UNIQUEMENT LE JSON, rien d'autre."""
 
     result = call_phi(prompt, temperature=0.1, max_tokens=400)
     log_agent("Agent4_Offers", result, result["tokens_used"], result["response_time"])
@@ -193,12 +206,19 @@ def node_report(state: InsuranceState) -> InsuranceState:
     best_offer = min(offers, key=lambda x: int(x['prime_annuelle'].replace('€', '').replace(' ', '')))
 
     prompt = f"""
-    Expert assurance maritime. Client : {needs['type_bateau']} {needs['valeur_estimee']}€,
+    Tu es un expert en assurance maritime.
+    Client : {needs['type_bateau']} de {needs['valeur_estimee']}€, 
     zone {needs['zone_navigation']}, besoin : {needs['besoins_specifiques']}.
-    Offres : {json.dumps(offers, ensure_ascii=False)}
-    Meilleure offre prix : {best_offer['agent']} à {best_offer['prime_annuelle']}
-    Rapport client : recommandation justifiée, comparaison rapide, prochaine étape.
-    Maximum 10 lignes, ton professionnel.
+    
+    Offres reçues de {len(offers)} assureurs : {json.dumps(offers, ensure_ascii=False)}
+    
+    Génère un rapport client avec :
+    1. CLASSEMENT des offres de la meilleure à la moins bonne (avec justification)
+    2. RECOMMANDATION PRINCIPALE claire avec raisons
+    3. TABLEAU COMPARATIF (prime, franchise, garanties, note)
+    4. PROCHAINE ÉTAPE pour le client
+    
+    Format professionnel, clair et concis.
     """
 
     result = call_phi(prompt, temperature=0.1, max_tokens=500)
