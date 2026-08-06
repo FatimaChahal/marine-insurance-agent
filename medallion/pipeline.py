@@ -88,7 +88,6 @@ def save_bronze(client_id: str, raw_email: str) -> int:
 def save_silver(bronze_id: int, client_id: str, anonymized_email: str, 
                 needs: dict, pii_count: int) -> int:
     
-    # Convertir besoins_specifiques en string si c'est une liste
     besoins = needs.get("besoins_specifiques", "")
     if isinstance(besoins, list):
         besoins = ", ".join(besoins)
@@ -112,6 +111,11 @@ def save_silver(bronze_id: int, client_id: str, anonymized_email: str,
         pii_count,
         datetime.now().isoformat()
     ))
+    silver_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    print(f"🥈 Silver — Données structurées sauvegardées (id: {silver_id})")
+    return silver_id
 
 def save_gold(silver_id: int, client_id: str, result: dict) -> int:
     """

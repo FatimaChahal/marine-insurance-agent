@@ -65,13 +65,17 @@ def node_understand(state: InsuranceState) -> InsuranceState:
         client_id=state.get("client_id", "anonymous"),
         raw_email=state["raw_email"]
     )
-    silver_id = save_silver(
-        bronze_id=bronze_id,
-        client_id=state.get("client_id", "anonymous"),
-        anonymized_email=anonymized_email,
-        needs=needs,
-        pii_count=len(pii_map)
-    )
+    try:
+        silver_id = save_silver(
+            bronze_id=bronze_id,
+            client_id=state.get("client_id", "anonymous"),
+            anonymized_email=anonymized_email,
+            needs=needs,
+            pii_count=len(pii_map)
+        )
+    except Exception as e:
+        print(f"❌ Silver save error : {e}")
+        silver_id = None
 
     return {
         **state,
@@ -221,7 +225,7 @@ def node_report(state: InsuranceState) -> InsuranceState:
     Format professionnel, clair et concis.
     """
 
-    result = call_phi(prompt, temperature=0.1, max_tokens=500)
+    result = call_phi(prompt, temperature=0.1, max_tokens=1500)
     log_agent("Agent5_Report", result, result["tokens_used"], result["response_time"])
 
     # Guardrail output
