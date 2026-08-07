@@ -20,7 +20,7 @@ MODEL = "Phi-4-mini-instruct"
 
 def call_phi(prompt: str, temperature: float = 0.1, max_tokens: int = 500, retries: int = 3) -> dict:
     from utils.litellm_client import call_llm
-    return call_llm(prompt, temperature=temperature, max_tokens=max_tokens, provider="groq")
+    return call_llm(prompt, temperature=temperature, max_tokens=max_tokens, provider="cerebras")
 
 def parse_json_response(content: str, fallback: list = None) -> list:
     """

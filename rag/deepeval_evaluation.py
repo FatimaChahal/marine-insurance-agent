@@ -13,17 +13,14 @@ from rag.vectorstore import search_agents
 
 
 class GroqEvaluator(DeepEvalBaseLLM):
-    """
-    LLM custom pour DeepEval — utilise Groq via LiteLLM
-    """
     def __init__(self):
-        self.model_name = "groq/llama-3.3-70b-versatile"
+        self.model_name = "cerebras/gpt-oss-120b"
 
     def load_model(self):
         return self
 
     def generate(self, prompt: str, *args, **kwargs) -> str:
-        result = call_llm(prompt, temperature=0.1, max_tokens=500, provider="groq")
+        result = call_llm(prompt, temperature=0.1, max_tokens=500, provider="cerebras")
         return result["content"]
 
     async def a_generate(self, prompt: str, *args, **kwargs) -> str:
@@ -70,14 +67,38 @@ def evaluate_rag_deepeval(query: str, answer: str, contexts: list) -> dict:
 
 
 if __name__ == "__main__":
-    query = "voilier 80000€ traversée Méditerranée Atlantique assistance 24h"
-    rag_results = search_agents(query, n_results=3)
-    contexts = [r["description"] for r in rag_results]
-    answer = f"Les agents recommandés sont : {', '.join([r['nom'] for r in rag_results])}"
-
-    print(f"Query : {query}")
-    print(f"Answer : {answer}")
-    print(f"Contexts : {len(contexts)} documents")
-
-    results = evaluate_rag_deepeval(query, answer, contexts)
-    print(f"\n✅ Scores DeepEval : {results}")
+    from rag.eval_dataset import EVAL_DATASET
+    
+    print("📊 Évaluation RAG sur dataset complet\n")
+    all_scores = []
+    
+    for i, case in enumerate(EVAL_DATASET):
+        print(f"\n[{i+1}/{len(EVAL_DATASET)}] Query : {case['query'][:50]}...")
+        
+        rag_results = search_agents(case["query"], n_results=3)
+        contexts = [r["description"] for r in rag_results]
+        answer = f"Agents recommandés : {', '.join([r['nom'] for r in rag_results])}"
+        
+        # Vérifie si les bons agents sont trouvés
+        found = [a for a in case["expected_agents"] if any(a in r["nom"] for r in rag_results)]
+        precision = len(found) / len(case["expected_agents"])
+        print(f"   🎯 Précision agents attendus : {precision:.0%} ({found})")
+        
+        scores = evaluate_rag_deepeval(
+            query=case["query"],
+            answer=answer,
+            contexts=contexts
+        )
+        scores["agent_precision"] = precision
+        all_scores.append(scores)
+    
+    # Moyennes finales
+    print("\n" + "="*50)
+    print("📊 SCORES FINAUX DEEPEVAL")
+    print("="*50)
+    metrics = ["AnswerRelevancy", "Faithfulness", "ContextualPrecision", "agent_precision"]
+    for m in metrics:
+        values = [s.get(m, 0) for s in all_scores]
+        avg = round(sum(values) / len(values), 3)
+        emoji = "🟢" if avg > 0.7 else "🟡" if avg > 0.5 else "🔴"
+        print(f"{emoji} {m} : {avg}")
