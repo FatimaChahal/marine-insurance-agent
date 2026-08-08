@@ -2,6 +2,8 @@ from typing import TypedDict, List, Optional, Annotated
 from datetime import datetime
 import operator
 
+
+
 class InsuranceState(TypedDict):
     """
     État partagé entre tous les agents LangGraph
@@ -35,3 +37,5 @@ class InsuranceState(TypedDict):
     errors: Annotated[List[str], operator.add]
     start_time: Optional[str]
     status: Optional[str]
+    confidence: Optional[float]
+    needs_human_review: Optional[bool]

@@ -47,17 +47,20 @@ def node_understand(state: InsuranceState) -> InsuranceState:
     content = result["content"]
     content = re.sub(r"```json|```", "", content).strip()
     
-    # Cherche le JSON même s'il y a du texte avant
+    is_fallback = False
     try:
-        # Essai direct
         needs = json.loads(content)
     except:
-        # Cherche un objet JSON dans le texte
         match = re.search(r'\{.*\}', content, re.DOTALL)
         if match:
-            needs = json.loads(match.group())
+            try:
+                needs = json.loads(match.group())
+            except:
+                is_fallback = True
         else:
-            # Fallback — structure minimale
+            is_fallback = True
+        
+        if is_fallback:
             needs = {
                 "type_bateau": "bateau",
                 "valeur_estimee": 50000,
@@ -67,7 +70,7 @@ def node_understand(state: InsuranceState) -> InsuranceState:
                 "duree_souhaitee": "1 an"
             }
             print("⚠️ JSON parsing failed — fallback utilisé")
-    
+
     # Sécurise les clés manquantes
     needs.setdefault("type_bateau", "bateau")
     needs.setdefault("valeur_estimee", 50000)
@@ -75,12 +78,35 @@ def node_understand(state: InsuranceState) -> InsuranceState:
     needs.setdefault("besoins_specifiques", "couverture standard")
     needs.setdefault("urgence", "moyenne")
 
+    # Score de confiance
+    if is_fallback:
+        confidence = 0.0
+    else:
+        real_values = {
+            "type_bateau": ["bateau"],
+            "valeur_estimee": [50000, "50000"],
+            "zone_navigation": ["Méditerranée"]
+        }
+        filled_fields = sum(
+            1 for f, defaults in real_values.items()
+            if needs.get(f) and str(needs.get(f)) not in [str(d) for d in defaults]
+        )
+        confidence = round(filled_fields / len(real_values), 2)
+
+    print(f"📊 Confiance extraction : {confidence} ({'fallback' if is_fallback else f'{int(confidence*3)}/3 champs'})")
+
+    if confidence < 0.7:
+        print("⚠️ Confiance faible — escalade vers courtier humain recommandée")
+
     return {
         **state,
         "client_needs": needs,
         "client_anonymized": {"email": anonymized_email, "pii_map": pii_map},
         "silver_id": silver_id,
-        "metadata": [{"agent": "Agent1", "tokens": result["tokens_used"], "time": result["response_time"]}]
+        "confidence": confidence,
+        "needs_human_review": confidence < 0.7,
+        "metadata": [{"agent": "Agent1", "tokens": result["tokens_used"], 
+                      "time": result["response_time"], "confidence": confidence}]
     }
 
 # ─── NODE 2 : RAG Sélection ──────────────────────────────────────────────────
@@ -304,6 +330,7 @@ def build_pipeline() -> StateGraph:
 
     # Nodes
     graph.add_node("understand", node_understand)
+    graph.add_node("human_review", node_human_review)
     graph.add_node("select", node_select)
     graph.add_node("broad_search", node_broad_search)
     graph.add_node("send_emails", node_send_emails)
@@ -313,8 +340,16 @@ def build_pipeline() -> StateGraph:
     # Entry point
     graph.set_entry_point("understand")
 
-    # Edges normaux
-    graph.add_edge("understand", "select")
+    # Edge conditionnel 0 : confiance suffisante ou escalade humaine ?
+    graph.add_conditional_edges(
+        "understand",
+        should_continue_or_review,
+        {
+            "select": "select",
+            "human_review": "human_review"
+        }
+    )
+    graph.add_edge("human_review", END)
 
     # Edge conditionnel 1 : assez d'agents ?
     graph.add_conditional_edges(
@@ -326,11 +361,10 @@ def build_pipeline() -> StateGraph:
         }
     )
 
-    # Après fallback → envoyer les mails
     graph.add_edge("broad_search", "send_emails")
+    graph.add_edge("send_emails", "collect_offers")
 
     # Edge conditionnel 2 : assez d'offres ?
-    graph.add_edge("send_emails", "collect_offers")
     graph.add_conditional_edges(
         "collect_offers",
         should_retry_offers,
@@ -379,6 +413,32 @@ def run_with_monitoring(email_content: str) -> dict:
     )
 
     return result
+
+def should_continue_or_review(state: InsuranceState) -> str:
+    """
+    Si confiance faible → escalade humaine
+    Si confiance OK → continue le pipeline
+    """
+    if state.get("needs_human_review", False):
+        print("🚨 Escalade humaine — confiance insuffisante")
+        return "human_review"
+    return "select"
+
+def node_human_review(state: InsuranceState) -> InsuranceState:
+    """
+    Node d'escalade — notifie qu'une revue humaine est nécessaire
+    """
+    print("\n🚨 ESCALADE HUMAINE")
+    print(f"   Client : {state.get('client_id', 'anonymous')}")
+    print(f"   Confiance : {state.get('confidence', 0)}")
+    print(f"   Besoins extraits : {state.get('client_needs', {})}")
+    print("   → Mail transmis au courtier pour traitement manuel")
+    
+    return {
+        **state,
+        "status": "needs_human_review",
+        "final_report": "⚠️ Ce dossier nécessite une revue humaine — confiance d'extraction insuffisante."
+    }
 
 if __name__ == "__main__":
     pipeline = build_pipeline()
